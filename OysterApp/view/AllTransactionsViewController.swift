@@ -1,71 +1,95 @@
-//
-//  TransactionsViewController.swift
-//  OysterApp
-//
-//  Created by Ewa on 22/12/2024.
-//
-
 import UIKit
 
 class AllTransactionsViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
-    
+
     @IBOutlet weak var transactionsTableView: UITableView!
     var transactions: [TransactionDTO] = []
-    var card: CardDTO?
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
         transactionsTableView.delegate = self
         transactionsTableView.dataSource = self
 
-        if let card = card {
-            fetchTransactions(for: card)
-        }
+        transactionsTableView.register(UITableViewCell.self, forCellReuseIdentifier: "TransactionCell")
+
+        fetchSelectedCardAndTransactions()
     }
 
-    // MARK: - Fetch All Transactions
+    func fetchSelectedCardAndTransactions() {
+        guard let selectedCard = APIService.shared.getSelectedCard() else {
+            print("No selected card found.")
+            showError("No card selected. Please go back and select a card.")
+            return
+        }
+
+        print("Selected card retrieved: \(selectedCard.cardNumber)")
+        fetchTransactions(for: selectedCard)
+    }
+
     func fetchTransactions(for card: CardDTO) {
+        print("Fetching transactions for card: \(card.cardNumber)")
+
         APIService.shared.getPaginatedTransactions(cardNumber: card.cardNumber, page: 0, size: 100) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let paginatedResponse):
                     self?.transactions = paginatedResponse.content
+                    print("Transactions fetched: \(paginatedResponse.content.count) transactions")
                     self?.transactionsTableView.reloadData()
                 case .failure(let error):
-                    self?.showError("Failed to load transactions: \(error.localizedDescription)")
+                    if let nsError = error as? NSError {
+                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                            self?.showError("Unable to load transactions: \(errorMessage)")
+                        } else {
+                            self?.showError("Unable to load transactions: \(nsError)")
+                        }
+                    } else {
+                        self?.showError("Unknown error: \(error)")
+                    }
                 }
             }
         }
     }
 
-    // MARK: - UITableView DataSource
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return transactions.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "TransactionCell2", for: indexPath)
+        let cell = tableView.dequeueReusableCell(withIdentifier: "TransactionCell", for: indexPath)
         let transaction = transactions[indexPath.row]
 
-        let startAtString = transaction.startAt
-        let formattedStartAt = startAtString.replacingOccurrences(of: "T", with: " ").prefix(16)
+        let startAtString = transaction.startAt.replacingOccurrences(of: "T", with: " ").prefix(16)
         let startStationName = transaction.startStation.name
         let endStationName = transaction.endStation?.name ?? "N/A"
+        let fare = transaction.fare ?? 0.0
 
-        cell.textLabel?.text = "\(formattedStartAt) \(startStationName) to \(endStationName)"
-        cell.detailTextLabel?.text = "Amount: \(transaction.fare ?? 0.0)"
+        cell.textLabel?.text = "\(startAtString) \(startStationName) to \(endStationName)"
+        cell.detailTextLabel?.text = "Fare: $\(fare)"
         return cell
     }
 
-    // MARK: - UITableView Delegate
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         let transaction = transactions[indexPath.row]
-        let transactionDetailsVC = TransactionDetailsViewController()
-        transactionDetailsVC.transactionId = transaction.id
-        navigationController?.pushViewController(transactionDetailsVC, animated: true)
+
+        let startAtString = transaction.startAt.replacingOccurrences(of: "T", with: " ").prefix(16)
+        let startStationName = transaction.startStation.name
+        let endStationName = transaction.endStation?.name ?? "N/A"
+        let fare = transaction.fare ?? 0.0
+
+        let message = """
+        Date: \(startAtString)
+        Start Station: \(startStationName)
+        End Station: \(endStationName)
+        Fare: \(fare)
+        """
+
+        let alert = UIAlertController(title: "Transaction Details", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Close", style: .default))
+        present(alert, animated: true)
     }
 
-    // MARK: - Show Error
     func showError(_ message: String) {
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))

@@ -10,7 +10,7 @@ struct CardDTO: Codable {
     let id: Int64
     let cardNumber: Int64
     let userId: Int64
-    let issuedAt: Date
+    let issuedAt: String
     let balance: Double
 
 }

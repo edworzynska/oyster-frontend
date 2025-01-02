@@ -7,6 +7,8 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
     @IBOutlet weak var transactionsTableView: UITableView!
     @IBOutlet weak var allTransactionsButton: UIButton!
     @IBOutlet weak var topUpButton: UIButton!
+    @IBOutlet weak var issueNewCardButton: UIButton!
+    @IBOutlet weak var registerCardButton: UIButton!
 
     var cards: [CardDTO] = []
     var selectedCard: CardDTO? {
@@ -16,94 +18,165 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
     }
 
     var transactions: [TransactionDTO] = []
-    var currentPage = 0
-    let pageSize = 10
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+
         cardPicker.delegate = self
         cardPicker.dataSource = self
         transactionsTableView.delegate = self
         transactionsTableView.dataSource = self
 
-        // Add double-tap gesture recognizer to the table view
-        let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
-        doubleTapGesture.numberOfTapsRequired = 2
-        transactionsTableView.addGestureRecognizer(doubleTapGesture)
+        transactionsTableView.register(UITableViewCell.self, forCellReuseIdentifier: "TransactionCell")
 
         fetchCards()
     }
-    
-    // MARK: - Handle Double-Tap on TableView Row
-    @objc func handleDoubleTap(gesture: UITapGestureRecognizer) {
-        let point = gesture.location(in: transactionsTableView)
-        if let indexPath = transactionsTableView.indexPathForRow(at: point) {
-            let transaction = transactions[indexPath.row]
-            showTransactionDetails(transaction)
-        }
-    }
-    
-    func showTransactionDetails(_ transaction: TransactionDTO) {
-        let startAtString = transaction.startAt.replacingOccurrences(of: "T", with: " ").prefix(16)
-        let startStationName = transaction.startStation.name
-        let endStationName = transaction.endStation?.name ?? "N/A"
-        let fare = transaction.fare ?? 0.0
 
-        let message = """
-        Date: \(startAtString)
-        Start Station: \(startStationName)
-        End Station: \(endStationName)
-        Fare: \(fare)
-        """
-
-        let alert = UIAlertController(title: "Transaction Details", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Close", style: .default))
-        present(alert, animated: true)
-    }
-
-    // MARK: - Fetch Cards
     func fetchCards() {
         APIService.shared.getCards { [weak self] result in
             DispatchQueue.main.async {
+                guard let self = self else { return }
                 switch result {
                 case .success(let cards):
-                    self?.cards = cards  // Assign the fetched cards to the cards property
-                    self?.cardPicker.reloadAllComponents()  // Reload the picker to display the cards
-                    self?.selectedCard = cards.first  // Optionally, set the first card as selected
+                    self.cards = cards
+                    self.cardPicker.reloadAllComponents()
+                    self.selectedCard = cards.first
                 case .failure(let error):
-                    self?.showError("Failed to load cards: \(error)")  // Show error if fetching fails
+                    if let nsError = error as? NSError {
+                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                            self.showError("Unable to fetch cards: \(errorMessage)")
+                        } else {
+                            self.showError("Unable to fetch cards: \(nsError)")
+                        }
+                    } else {
+                        self.showError("Unknown error: \(error)")
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Fetch Transactions for Selected Card
-    func fetchTransactions(for card: CardDTO, reset: Bool = false) {
-        if reset {
-            currentPage = 0
-            transactions = []
-        }
+    func fetchTransactions(for card: CardDTO) {
+        transactions = []
+        transactionsTableView.reloadData()
 
-        APIService.shared.getPaginatedTransactions(cardNumber: card.cardNumber, page: currentPage, size: pageSize) { [weak self] result in
+        APIService.shared.getPaginatedTransactions(cardNumber: card.cardNumber, page: 0, size: 10) { [weak self] result in
             DispatchQueue.main.async {
+                guard let self = self else { return }
                 switch result {
                 case .success(let paginatedResponse):
-                    self?.transactions.append(contentsOf: paginatedResponse.content)
-                    self?.transactionsTableView.reloadData()
+                    self.transactions = paginatedResponse.content
+                    self.transactionsTableView.reloadData()
                 case .failure(let error):
-                    self?.showError("Failed to load transactions: \(error)")
+                    if let nsError = error as? NSError {
+                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                            self.showError("Unable to load transactions: \(errorMessage)")
+                        } else {
+                            self.showError("Unable to load transactions: \(nsError)")
+                        }
+                    } else {
+                        self.showError("Unknown error: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    @IBAction func issueNewCardTapped(_ sender: UIButton) {
+        let alert = UIAlertController(title: "Issue New Card", message: "Are you sure you want to issue a new card?", preferredStyle: .alert)
+        
+        alert.addAction(UIAlertAction(title: "Yes", style: .default, handler: { [weak self] _ in
+            self?.issueNewCard()
+        }))
+        
+        alert.addAction(UIAlertAction(title: "No", style: .cancel))
+        
+        present(alert, animated: true)
+    }
+
+    func issueNewCard() {
+        APIService.shared.issueNewCard { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let cardDTO):
+                    self?.fetchCards()
+                    self?.cardPicker.reloadAllComponents()
+                    self?.selectedCard = cardDTO
+                    self?.updateCardDetails()
+                    self?.showSuccess("New card issued successfully.")
+                case .failure(let error):
+                    if let nsError = error as? NSError {
+                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                            self?.showError("Unable to issue new card: \(errorMessage)")
+                        } else {
+                            self?.showError("Unable to issue new card: \(nsError)")
+                        }
+                    } else {
+                        self?.showError("Unknown error: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    @IBAction func registerCardTapped(_ sender: UIButton) {
+        let alert = UIAlertController(title: "Register Card", message: "Please enter your card number", preferredStyle: .alert)
+        
+        alert.addTextField { textField in
+            textField.placeholder = "Card Number"
+            textField.keyboardType = .numberPad
+        }
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        alert.addAction(UIAlertAction(title: "Register", style: .default, handler: { [weak self] _ in
+            if let cardNumber = alert.textFields?.first?.text, let number = Int64(cardNumber) {
+                self?.registerCard(cardNumber: number)
+            }
+//            else {
+//                self?.showError("Invalid card number.")
+//            }
+        }))
+        
+        present(alert, animated: true)
+    }
+
+    func registerCard(cardNumber: Int64) {
+        APIService.shared.registerCard(cardNumber: cardNumber) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let cardDTO):
+                    self?.fetchCards()
+                    self?.cardPicker.reloadAllComponents()
+                    self?.selectedCard = cardDTO
+                    self?.updateCardDetails()
+                    self?.showSuccess("Card registered successfully.")
+                case .failure(let error):
+                    if let nsError = error as? NSError {
+                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                            self?.showError("Unable to register the card: \(errorMessage)")
+                        } else {
+                            self?.showError("Unable to register the card: \(nsError)")
+                        }
+                    } else {
+                        self?.showError("Unknown error: \(error)")
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Update UI for Selected Card
+
     func updateCardDetails() {
         if let card = selectedCard {
-            balanceLabel.text = "Balance: \(card.balance)"
-            fetchTransactions(for: card, reset: true)
-            APIService.shared.selectCard(selectedCard!)
+
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencyCode = "GBP"
+            balanceLabel.text = "Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
+          
+            fetchTransactions(for: card)
+            
+            APIService.shared.selectCard(card)
         } else {
             balanceLabel.text = "No card selected"
             transactions = []
@@ -111,7 +184,6 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
         }
     }
 
-    // MARK: - UIPickerView DataSource and Delegate
     func numberOfComponents(in pickerView: UIPickerView) -> Int {
         return 1
     }
@@ -127,11 +199,8 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
 
     func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
         selectedCard = cards[row]
-        APIService.shared.selectCard(selectedCard!)
-        updateCardDetails()
     }
 
-    // MARK: - UITableView DataSource and Delegate
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return transactions.count
     }
@@ -139,46 +208,23 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "TransactionCell", for: indexPath)
         let transaction = transactions[indexPath.row]
-        
-        // Modify the startAt string to remove the 'T' and keep only the necessary parts
-        let startAtString = transaction.startAt
-        let formattedStartAt = startAtString.replacingOccurrences(of: "T", with: " ").prefix(16)
-        
-        // Format the station details
-        let startStationName = transaction.startStation.name
-        let endStationName = transaction.endStation?.name ?? "N/A"
-        
-        // Set the formatted date and transaction details in the cell
-        cell.textLabel?.text = "\(formattedStartAt) \(startStationName) to \(endStationName)"
-        cell.detailTextLabel?.text = "Amount: \(transaction.fare ?? 0.0)"
-        
+
+        let formattedDate = transaction.startAt.replacingOccurrences(of: "T", with: " ").prefix(16)
+        let startStation = transaction.startStation.name
+        let endStation = transaction.endStation?.name ?? "N/A"
+
+        cell.textLabel?.text = "\(formattedDate) \(startStation) to \(endStation)"
+        cell.detailTextLabel?.text = "Fare: \(transaction.fare ?? 0.0)"
         return cell
     }
 
-
-    // MARK: - Actions
-    @IBAction func topUpButtonTapped(_ sender: UIButton) {
-        let topUpVC = TopUpViewController()  // Pass cards to TopUpViewController
-        navigationController?.pushViewController(topUpVC, animated: true)
-    }
-
-    @IBAction func loadAllTransactionsTapped(_ sender: UIButton) {
-        guard let card = selectedCard else {
-            showError("No card selected.")
-            return
-        }
-
-        let storyboard = UIStoryboard(name: "Main", bundle: nil)
-        guard let allTransactionsVC = storyboard.instantiateViewController(identifier: "AllTransactionsViewController") as? AllTransactionsViewController else {
-            return
-        }
-
-        navigationController?.pushViewController(allTransactionsVC, animated: true)
-    }
-
-    // MARK: - Show Error Alert
     func showError(_ message: String) {
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+    func showSuccess(_ message: String) {
+        let alert = UIAlertController(title: "Success", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
