@@ -47,11 +47,12 @@ class TopUpViewController: UIViewController {
                 case .success():
                     self?.showSuccess("Top-up successful!")
                 case .failure(let error):
-                    if let nsError = error as? NSError {
-                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
-                            self?.showError("Top up failed: \(errorMessage)")
+                    if let nsError = error as? NSError,
+                       let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                        if errorMessage == "incorrect top up value" {
+                            self?.showError("Please enter a valid top-up amount!")
                         } else {
-                            self?.showError("Top up failed: \(nsError)")
+                            self?.showError("Top up failed: \(errorMessage)")
                         }
                     } else {
                         self?.showError("Unknown error: \(error)")

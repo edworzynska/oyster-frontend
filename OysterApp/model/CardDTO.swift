@@ -12,5 +12,6 @@ struct CardDTO: Codable {
     let userId: Int64
     let issuedAt: String
     let balance: Double
+    let isActive: Bool?
 
 }

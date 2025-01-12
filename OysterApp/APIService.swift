@@ -259,6 +259,32 @@ class APIService {
         }
         task.resume()
     }
+    func blockCard(cardNumber: Int64, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let url = getURL(for: "/cards/block/\(cardNumber)") else {
+            completion(.failure(makeError(domain: "Invalid URL", code: 400, message: "Invalid URL")))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(self.makeError(domain: "No data", code: 404, message: "No data received from the server.")))
+                return
+            }
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                completion(.failure(self.decodeAPIError(data: data) ?? self.makeError(domain: "Unknown error", code: httpResponse.statusCode, message: "An unknown error occurred.")))
+            }
+            completion(.success(()))
+        }
+        task.resume()
+    }
     
     func topUpCard(cardNumber: Int64, amount: Double, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let url = getURL(for: "/cards/\(cardNumber)?amount=\(amount)") else {
@@ -334,9 +360,22 @@ class APIService {
         cardNumber: Int64,
         page: Int,
         size: Int,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
         completion: @escaping (Result<PaginatedResponse<TransactionDTO>, Error>) -> Void
     ) {
-        guard let url = getURL(for: "/transactions/card/\(cardNumber)?page=\(page)&size=\(size)") else {
+        var urlString = "/transactions/card/\(cardNumber)?page=\(page)&size=\(size)"
+        
+        if let startDate = startDate {
+            let startDateString = formatDate(startDate)
+            urlString += "&startDate=\(startDateString)"
+        }
+        if let endDate = endDate {
+            let endDateString = formatDate(endDate)
+            urlString += "&endDate=\(endDateString)"
+        }
+        
+        guard let url = getURL(for: urlString) else {
             completion(.failure(makeError(domain: "Invalid URL", code: 400, message: "Invalid URL")))
             return
         }
@@ -358,7 +397,7 @@ class APIService {
             do {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
-              
+                
                 let paginatedResponse = try decoder.decode(PaginatedResponse<TransactionDTO>.self, from: data)
                 completion(.success(paginatedResponse))
             } catch {
@@ -368,6 +407,14 @@ class APIService {
         task.resume()
     }
 
+
+    func formatDate(_ date: Date) -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss" 
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return dateFormatter.string(from: date)
+    }
+    
     func getTransaction(
         transactionId: Int64,
         completion: @escaping (Result<TransactionDTO, Error>) -> Void
@@ -404,6 +451,9 @@ class APIService {
         }
         task.resume()
     }
+    
+    
+
 
     func loginUser(email: String, password: String, completion: @escaping (Result<Void, Error>) -> Void) {
         let url = URL(string: "http://localhost:8080/login")!

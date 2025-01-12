@@ -28,14 +28,25 @@ class DashboardViewController: UIViewController {
        
     }
     
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        fetchCards()
+    }
+    
     func fetchCards() {
         APIService.shared.getCards { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let cards):
-                    self?.cards = cards
+                    let previousSelectedCardId = self?.selectedCard?.id
+                    self?.cards = cards.filter{ $0.isActive ?? true}
                     self?.cardPicker.reloadAllComponents()
-                    self?.selectedCard = cards.first
+                    if let previousSelectedCardId = previousSelectedCardId {
+                                            self?.selectedCard = cards.first { $0.id == previousSelectedCardId }
+                                        }
+                    if self?.selectedCard == nil {
+                                            self?.selectedCard = cards.first
+                                        }
                     self?.updateCardInfoLabel()
                 case .failure(let error):
                     if let nsError = error as? NSError {
@@ -116,6 +127,8 @@ class DashboardViewController: UIViewController {
                 case .success(let transaction):
                     print("Successfully tapped out: \(transaction)")
                     self!.showTapOutSuccessAlert(station: selectedStation, fare: transaction.fare!)
+                    self!.fetchCards()
+                
                 case .failure(let error):
                     if let nsError = error as? NSError {
                         if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {

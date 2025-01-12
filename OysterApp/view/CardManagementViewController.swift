@@ -9,6 +9,7 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
     @IBOutlet weak var topUpButton: UIButton!
     @IBOutlet weak var issueNewCardButton: UIButton!
     @IBOutlet weak var registerCardButton: UIButton!
+    @IBOutlet weak var blockCardButton: UIButton!
 
     var cards: [CardDTO] = []
     var selectedCard: CardDTO? {
@@ -30,6 +31,11 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
         transactionsTableView.register(UITableViewCell.self, forCellReuseIdentifier: "TransactionCell")
 
         fetchCards()
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        fetchCards()
+        updateCardDetails()
     }
 
     func fetchCards() {
@@ -93,6 +99,20 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
         
         present(alert, animated: true)
     }
+    @IBAction func blockCardTapped(_ sender: UIButton) {
+        if (selectedCard == nil){
+            showError("Please select a card first.")
+        }
+        let alert = UIAlertController(title: "Block Card", message: "Are you sure you want to block the card number \(selectedCard?.cardNumber ?? nil)?", preferredStyle: .alert)
+        
+        alert.addAction(UIAlertAction(title: "Yes", style: .default, handler: { [weak self] _ in
+            self?.blockCard()
+        }))
+        
+        alert.addAction(UIAlertAction(title: "No", style: .cancel))
+        
+        present(alert, animated: true)
+    }
 
     func issueNewCard() {
         APIService.shared.issueNewCard { [weak self] result in
@@ -118,6 +138,27 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
             }
         }
     }
+    func blockCard() {
+        APIService.shared.blockCard(cardNumber: selectedCard!.cardNumber) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.fetchCards()
+                    self?.cardPicker.reloadAllComponents()
+                    self?.showSuccess("Card blocked successfully.")
+                case .failure(let error):
+                    if let nsError = error as? NSError {
+                        if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                            self?.showError("Unable to block the card: \(errorMessage)")
+                        } else {
+                            self?.showError("Unable to block the card: \(nsError)")
+                        }
+                    } else {
+                        self?.showError("Unknown error: \(error)")
+                    }
+                }
+                }
+            }}
     @IBAction func registerCardTapped(_ sender: UIButton) {
         let alert = UIAlertController(title: "Register Card", message: "Please enter your card number", preferredStyle: .alert)
         
@@ -132,9 +173,6 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
             if let cardNumber = alert.textFields?.first?.text, let number = Int64(cardNumber) {
                 self?.registerCard(cardNumber: number)
             }
-//            else {
-//                self?.showError("Invalid card number.")
-//            }
         }))
         
         present(alert, animated: true)
@@ -172,6 +210,10 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
             let formatter = NumberFormatter()
             formatter.numberStyle = .currency
             formatter.currencyCode = "GBP"
+            if (card.isActive == false){
+                balanceLabel.text = "Card inactive. Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
+                return
+            }
             balanceLabel.text = "Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
           
             fetchTransactions(for: card)
@@ -210,11 +252,18 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
         let transaction = transactions[indexPath.row]
 
         let formattedDate = transaction.startAt.replacingOccurrences(of: "T", with: " ").prefix(16)
-        let startStation = transaction.startStation.name
+        let startStation = transaction.startStation?.name ?? "N/A"
         let endStation = transaction.endStation?.name ?? "N/A"
+        let transactionType = transaction.transactionType
+        let amount = transaction.fare ?? transaction.topUpAmount ?? 0.00
+        
+        if (transactionType == "TOP_UP"){
+            cell.textLabel?.text = "\(formattedDate) - Top-up \(amount)"
+        }
+        else if (transactionType == "CHARGE"){
+            cell.textLabel?.text = "\(formattedDate) - \(startStation) to \(endStation) - Charge \(amount)"
+        }
 
-        cell.textLabel?.text = "\(formattedDate) \(startStation) to \(endStation)"
-        cell.detailTextLabel?.text = "Fare: \(transaction.fare ?? 0.0)"
         return cell
     }
 
