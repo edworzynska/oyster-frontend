@@ -103,7 +103,7 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
         if (selectedCard == nil){
             showError("Please select a card first.")
         }
-        let alert = UIAlertController(title: "Block Card", message: "Are you sure you want to block the card number \(selectedCard?.cardNumber ?? nil)?", preferredStyle: .alert)
+        let alert = UIAlertController(title: "Block Card", message: "Are you sure you want to block the card number \(selectedCard!.cardNumber)?", preferredStyle: .alert)
         
         alert.addAction(UIAlertAction(title: "Yes", style: .default, handler: { [weak self] _ in
             self?.blockCard()
@@ -210,11 +210,11 @@ class CardManagementViewController: UIViewController, UIPickerViewDelegate, UIPi
             let formatter = NumberFormatter()
             formatter.numberStyle = .currency
             formatter.currencyCode = "GBP"
-            if (card.isActive == false){
-                balanceLabel.text = "Card inactive. Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
-                return
-            }
-            balanceLabel.text = "Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
+            if card.isActive == false {
+                        balanceLabel.text = "Card inactive. Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
+                    } else {
+                        balanceLabel.text = "Balance: \(formatter.string(from: NSNumber(value: card.balance)) ?? "0.00")"
+                    }
           
             fetchTransactions(for: card)
             

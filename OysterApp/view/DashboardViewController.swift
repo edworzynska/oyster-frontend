@@ -39,15 +39,18 @@ class DashboardViewController: UIViewController {
                 switch result {
                 case .success(let cards):
                     let previousSelectedCardId = self?.selectedCard?.id
-                    self?.cards = cards.filter{ $0.isActive ?? true}
+                    self?.cards = cards.filter { $0.isActive ?? true }
                     self?.cardPicker.reloadAllComponents()
-                    if let previousSelectedCardId = previousSelectedCardId {
-                                            self?.selectedCard = cards.first { $0.id == previousSelectedCardId }
-                                        }
-                    if self?.selectedCard == nil {
-                                            self?.selectedCard = cards.first
-                                        }
+                 
+                    if let previousSelectedCardId = previousSelectedCardId,
+                       let activePreviousSelectedCard = self?.cards.first(where: { $0.id == previousSelectedCardId }) {
+                        self?.selectedCard = activePreviousSelectedCard
+                    } else {
+                        self?.selectedCard = self?.cards.first
+                    }
+
                     self?.updateCardInfoLabel()
+                    
                 case .failure(let error):
                     if let nsError = error as? NSError {
                         if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
@@ -62,6 +65,7 @@ class DashboardViewController: UIViewController {
             }
         }
     }
+
     
     private func fetchStations() {
         APIService.shared.getStations { [weak self] result in
@@ -145,8 +149,11 @@ class DashboardViewController: UIViewController {
     }
     
     private func updateCardInfoLabel() {
-        guard let selectedCard = selectedCard else { return }
-        cardInfoLabel.text = "Card: \(selectedCard.cardNumber) - Balance: \(selectedCard.balance)"
+        if let selectedCard = selectedCard {
+            cardInfoLabel.text = "Card: \(selectedCard.cardNumber) - Balance: \(selectedCard.balance)"
+        } else {
+            cardInfoLabel.text = "No card selected"
+        }
     }
     
     func showError(_ message: String) {
@@ -195,8 +202,10 @@ extension DashboardViewController: UIPickerViewDelegate, UIPickerViewDataSource 
     
     func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
         if pickerView == cardPicker {
+            guard row < cards.count else { return nil }
             return "\(cards[row].cardNumber)"
         } else if pickerView == stationPicker {
+            guard row < stations.count else { return nil }
             return stations[row].name
         }
         return nil
@@ -204,11 +213,13 @@ extension DashboardViewController: UIPickerViewDelegate, UIPickerViewDataSource 
     
     func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
         if pickerView == cardPicker {
+            guard row < cards.count else { return }
             selectedCard = cards[row]
             APIService.shared.selectCard(selectedCard!)
             updateCardInfoLabel()
             print("Selected card: \(selectedCard?.cardNumber ?? 0)")
         } else if pickerView == stationPicker {
+            guard row < stations.count else { return }
             selectedStation = stations[row]
             print("Selected station: \(selectedStation?.name ?? "None")")
         }

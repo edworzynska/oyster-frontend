@@ -346,7 +346,7 @@ class APIService {
                 return
             }
 
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 201 {
                 completion(.failure(self.decodeAPIError(data: data) ?? self.makeError(domain: "Unknown error", code: httpResponse.statusCode, message: "An unknown error occurred.")))
                 return
             }
